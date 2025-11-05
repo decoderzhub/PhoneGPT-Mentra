@@ -54,7 +54,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
   // Helper to get fresh auth config
   const getAxiosConfig = () => ({
     headers: {
-      Authorization: `Bearer ${localStorage.getItem('token')}`
+      Authorization: `Bearer ${localStorage.getItem('auth_token')}`
     }
   });
 
