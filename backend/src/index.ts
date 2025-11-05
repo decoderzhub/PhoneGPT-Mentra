@@ -1700,7 +1700,7 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
         sessionState.state = 'displaying';
 
         // Save conversation to database WITH current persona
-        const currentPersona = sessionState.persona || dbSession.persona;
+        currentPersona = sessionState.persona || dbSession.persona;
         db.prepare(
           'INSERT INTO glassConversations (sessionId, query, response, responsePages, persona) VALUES (?, ?, ?, ?, ?)'
         ).run(sessionState.dbSessionId, transcript, aiResponse, JSON.stringify(pages), currentPersona);
