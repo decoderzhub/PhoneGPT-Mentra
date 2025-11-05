@@ -857,6 +857,30 @@ class PhoneGPTMentraOSApp extends AppServer {
       }
     });
 
+    // Get current transcription text (accumulated from glasses)
+    app.get('/api/glass-sessions/:sessionId/transcription', authenticateToken, (req: any, res: Response) => {
+      try {
+        const { sessionId } = req.params;
+
+        const session: any = db.prepare(
+          'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
+        ).get(sessionId, req.user.userId);
+
+        if (!session) {
+          return res.status(404).json({ error: 'Session not found' });
+        }
+
+        // Get transcription from in-memory session state
+        const glassState = this.sessions.get(session.deviceId);
+        const transcription = glassState?.currentTranscript || '';
+
+        res.json({ transcription });
+      } catch (error) {
+        console.error('Get transcription error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
     // Save transcription with AI summarization
     app.post('/api/transcriptions', authenticateToken, async (req: any, res: Response) => {
       try {
@@ -891,6 +915,21 @@ class PhoneGPTMentraOSApp extends AppServer {
         ).run(req.user.userId, summary, transcription, persona);
 
         console.log(`✅ Saved transcription as document: "${summary}"`);
+
+        // Clear the transcription from session state
+        if (sessionId) {
+          const session: any = db.prepare(
+            'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
+          ).get(sessionId, req.user.userId);
+
+          if (session) {
+            const glassState = this.sessions.get(session.deviceId);
+            if (glassState) {
+              glassState.currentTranscript = '';
+              console.log('🗑️ Cleared transcription buffer');
+            }
+          }
+        }
 
         res.json({
           message: 'Transcription saved successfully',
@@ -1585,6 +1624,24 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
 
     // Setup transcription listener with PROPER PAGINATION
     session.events.onTranscription(async (data) => {
+      // If in transcription mode, accumulate text but don't process for Q&A
+      if (sessionState.state === 'transcribing') {
+        if (data.isFinal) {
+          const transcript = data.text.trim();
+          console.log(`📝 Transcription: "${transcript}"`);
+
+          // Store transcription in session state (will be retrieved by frontend)
+          if (!sessionState.currentTranscript) {
+            sessionState.currentTranscript = '';
+          }
+          sessionState.currentTranscript += transcript + ' ';
+
+          this.addEvent('transcription_text', { transcript, sessionId }, sessionId);
+        }
+        return;
+      }
+
+      // If paused but NOT in transcribing mode, ignore completely
       if (sessionState.isPaused) {
         console.log('🔇 Microphone paused - ignoring voice input');
         return;
@@ -1593,7 +1650,7 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
       if (data.isFinal) {
         const transcript = data.text.trim();
         console.log(`🎤 Voice: "${transcript}"`);
-        
+
         this.addEvent('voice_input', { transcript, sessionId }, sessionId);
         sessionState.state = 'processing';
         

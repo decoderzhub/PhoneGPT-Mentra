@@ -62,41 +62,26 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
     fetchNotes();
   }, [persona]);
 
-  // Setup speech recognition
+  // Poll for transcription from glasses
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition;
-      const recognitionInstance = new SpeechRecognition();
-      recognitionInstance.continuous = true;
-      recognitionInstance.interimResults = true;
-      recognitionInstance.lang = 'en-US';
+    if (!isRecording || !sessionId) return;
 
-      let finalTranscript = '';
-
-      recognitionInstance.onresult = (event: any) => {
-        let interimTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
-          } else {
-            interimTranscript += transcript;
-          }
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await axios.get(
+          `${API_URL}/api/glass-sessions/${sessionId}/transcription`,
+          axiosConfig
+        );
+        if (response.data.transcription) {
+          setCurrentTranscript(response.data.transcription);
         }
+      } catch (error) {
+        console.error('Failed to fetch transcription:', error);
+      }
+    }, 500); // Poll every 500ms
 
-        setCurrentTranscript(finalTranscript + interimTranscript);
-      };
-
-      recognitionInstance.onend = () => {
-        if (isRecording) {
-          recognitionInstance.start();
-        }
-      };
-
-      setRecognition(recognitionInstance);
-    }
-  }, [isRecording]);
+    return () => clearInterval(pollInterval);
+  }, [isRecording, sessionId]);
 
   // Timer for recording
   useEffect(() => {
@@ -129,19 +114,16 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
   };
 
   const startRecording = () => {
-    if (recognition) {
-      setIsRecording(true);
-      setRecordingTime(0);
-      setCurrentTranscript('');
-      recognition.start();
-    }
+    // Recording is now handled by glasses transcription
+    setIsRecording(true);
+    setRecordingTime(0);
+    setCurrentTranscript('');
+    console.log('🎙️ Started recording from glasses');
   };
 
   const stopRecording = () => {
-    if (recognition) {
-      recognition.stop();
-      setIsRecording(false);
-    }
+    setIsRecording(false);
+    console.log('⏹️ Stopped recording from glasses');
   };
 
   const saveTranscript = async () => {
