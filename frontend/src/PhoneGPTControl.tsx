@@ -539,10 +539,24 @@ return (
         <div className="grid grid-cols-2 gap-3">
           {/* Transcribe Tile */}
           <button
-            onClick={() => setShowTranscription(true)}
+            onClick={async () => {
+              if (activeSessionId) {
+                try {
+                  await axios.post(
+                    `${API_URL}/api/glass-sessions/${activeSessionId}/pause-for-transcribe`,
+                    {},
+                    axiosConfig
+                  );
+                  console.log('✅ Session paused for transcription');
+                } catch (error) {
+                  console.error('Failed to pause session:', error);
+                }
+              }
+              setShowTranscription(true);
+            }}
             className={`relative h-28 rounded-xl p-3 flex flex-col items-center justify-center transition-all active:scale-95 ${
-              darkMode 
-                ? 'bg-gradient-to-br from-purple-600 to-pink-600' 
+              darkMode
+                ? 'bg-gradient-to-br from-purple-600 to-pink-600'
                 : 'bg-gradient-to-br from-purple-500 to-pink-500'
             } text-white shadow-lg`}
           >
@@ -1097,7 +1111,22 @@ return (
           <TranscriptionNotes
             persona={activePersona}
             darkMode={darkMode}
-            onBack={() => setShowTranscription(false)}
+            sessionId={activeSessionId}
+            onBack={async () => {
+              if (activeSessionId) {
+                try {
+                  await axios.post(
+                    `${API_URL}/api/glass-sessions/${activeSessionId}/resume-from-transcribe`,
+                    {},
+                    axiosConfig
+                  );
+                  console.log('✅ Session resumed from transcription');
+                } catch (error) {
+                  console.error('Failed to resume session:', error);
+                }
+              }
+              setShowTranscription(false);
+            }}
           />
         </div>
       </div>

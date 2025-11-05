@@ -31,12 +31,14 @@ interface TranscriptionNote {
 interface TranscriptionNotesProps {
   persona: string;
   darkMode: boolean;
+  sessionId?: number | null;
   onBack?: () => void;
 }
 
 const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
   persona,
   darkMode,
+  sessionId,
   onBack
 }) => {
   const [notes, setNotes] = useState<TranscriptionNote[]>([]);
@@ -146,23 +148,21 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
     if (currentTranscript.trim()) {
       try {
         const response = await axios.post(
-          `${API_URL}/api/transcription-notes`,
+          `${API_URL}/api/transcriptions`,
           {
-            persona,
-            title: `Recording ${new Date().toLocaleString()}`,
-            transcript: currentTranscript,
-            duration: recordingTime
+            sessionId,
+            transcription: currentTranscript,
+            persona
           },
           axiosConfig
         );
 
+        console.log('✅ Transcription saved:', response.data);
+
+        // Refresh documents list (transcription was saved as a document)
         await fetchNotes();
         setCurrentTranscript('');
         setRecordingTime(0);
-
-        if (response.data) {
-          setSelectedNote(response.data);
-        }
       } catch (error) {
         console.error('Failed to save transcript:', error);
       }

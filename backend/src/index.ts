@@ -745,30 +745,48 @@ class PhoneGPTMentraOSApp extends AppServer {
       }
     });
 
-    app.post('/api/glass-sessions/:sessionId/switch-persona', authenticateToken, (req: any, res: Response) => {
+    app.post('/api/glass-sessions/:sessionId/switch-persona', authenticateToken, async (req: any, res: Response) => {
       try {
         const { sessionId } = req.params;
         const { persona } = req.body;
-        
-        const session = db.prepare(
+
+        const session: any = db.prepare(
           'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
         ).get(sessionId, req.user.userId);
-        
+
         if (!session) {
           return res.status(404).json({ error: 'Session not found' });
         }
-        
-        // Update persona
+
+        // Update persona in database
         db.prepare('UPDATE glassSessions SET persona = ? WHERE id = ?').run(persona, sessionId);
-        
+
         // Update active glass session if connected
         const glassState = this.sessions.get(sessionId.toString());
-        if (glassState) {
+        if (glassState && session.deviceId) {
           // Update the persona in memory
           (glassState as any).persona = persona;
+
+          // Send notification to glasses display
+          const personaEmoji = persona === 'work' ? '💼' : persona === 'home' ? '🏠' : '🎮';
+          const notificationText = `${personaEmoji} Switched to ${persona.toUpperCase()} mode`;
+
+          try {
+            await glassState.updateView(ViewType.Text, {
+              text: notificationText
+            });
+            console.log(`✅ Sent persona switch notification to glasses: ${notificationText}`);
+
+            // Clear notification after 3 seconds
+            setTimeout(() => {
+              glassState.updateView(ViewType.Text, { text: '' }).catch(() => {});
+            }, 3000);
+          } catch (error) {
+            console.error('Failed to send glass notification:', error);
+          }
         }
-        
-        res.json({ 
+
+        res.json({
           message: 'Persona switched successfully',
           persona: persona
         });
@@ -796,6 +814,133 @@ class PhoneGPTMentraOSApp extends AppServer {
                       glassState.displayDuration, lastMessage.pages.length, glassState.currentPageIndex);
       
       res.json({ currentPage: glassState.currentPageIndex, totalPages: lastMessage.pages.length });
+    });
+
+    // ======================================================================
+    // Transcription Endpoints
+    // ======================================================================
+
+    // Pause session (disconnect microphone for transcription)
+    app.post('/api/glass-sessions/:sessionId/pause-for-transcribe', authenticateToken, async (req: any, res: Response) => {
+      try {
+        const { sessionId } = req.params;
+
+        const session: any = db.prepare(
+          'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
+        ).get(sessionId, req.user.userId);
+
+        if (!session) {
+          return res.status(404).json({ error: 'Session not found' });
+        }
+
+        // Update database to paused
+        db.prepare('UPDATE glassSessions SET is_paused = 1 WHERE id = ?').run(sessionId);
+
+        // Update in-memory session state
+        const glassState = this.sessions.get(session.deviceId);
+        if (glassState) {
+          glassState.isPaused = true;
+          glassState.state = 'transcribing';
+          console.log(`🔇 Session ${sessionId} microphone paused for transcription`);
+
+          // Notify glasses
+          await glassState.session.layouts.showTextWall('🎙️ Transcription Mode\n\nSpeak to record notes', {
+            view: ViewType.MAIN,
+            durationMs: 3000
+          });
+        }
+
+        res.json({ message: 'Session paused for transcription' });
+      } catch (error) {
+        console.error('Pause session error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // Save transcription with AI summarization
+    app.post('/api/transcriptions', authenticateToken, async (req: any, res: Response) => {
+      try {
+        const { sessionId, transcription, persona } = req.body;
+
+        if (!transcription || !persona) {
+          return res.status(400).json({ error: 'Transcription and persona required' });
+        }
+
+        // Summarize with Anthropic
+        console.log(`📝 Generating summary for transcription (${transcription.length} chars)`);
+
+        let summary = 'Transcription Note';
+        try {
+          const message = await anthropic.messages.create({
+            model: LLM_MODEL,
+            max_tokens: 50,
+            messages: [{
+              role: 'user',
+              content: `Generate a very short title (3-5 words max) for this transcription:\n\n${transcription.substring(0, 500)}`
+            }]
+          });
+
+          summary = message.content[0].type === 'text' ? message.content[0].text.trim() : 'Transcription Note';
+        } catch (error) {
+          console.error('Failed to generate summary:', error);
+        }
+
+        // Save to documents
+        const result = db.prepare(
+          'INSERT INTO documents (userId, fileName, content, persona) VALUES (?, ?, ?, ?)'
+        ).run(req.user.userId, summary, transcription, persona);
+
+        console.log(`✅ Saved transcription as document: "${summary}"`);
+
+        res.json({
+          message: 'Transcription saved successfully',
+          document: {
+            id: result.lastInsertRowid,
+            fileName: summary,
+            persona
+          }
+        });
+      } catch (error) {
+        console.error('Save transcription error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // Resume session (reconnect microphone after transcription)
+    app.post('/api/glass-sessions/:sessionId/resume-from-transcribe', authenticateToken, async (req: any, res: Response) => {
+      try {
+        const { sessionId } = req.params;
+
+        const session: any = db.prepare(
+          'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
+        ).get(sessionId, req.user.userId);
+
+        if (!session) {
+          return res.status(404).json({ error: 'Session not found' });
+        }
+
+        // Update database to active
+        db.prepare('UPDATE glassSessions SET is_paused = 0 WHERE id = ?').run(sessionId);
+
+        // Update in-memory session state
+        const glassState = this.sessions.get(session.deviceId);
+        if (glassState) {
+          glassState.isPaused = false;
+          glassState.state = 'listening';
+          console.log(`🎤 Session ${sessionId} microphone resumed`);
+
+          // Notify glasses
+          await glassState.session.layouts.showTextWall('✅ Q&A Mode Active\n\nReady for questions!', {
+            view: ViewType.MAIN,
+            durationMs: 2000
+          });
+        }
+
+        res.json({ message: 'Session resumed for Q&A' });
+      } catch (error) {
+        console.error('Resume session error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
     });
 
     // ======================================================================
@@ -1399,21 +1544,16 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
       dbUserId = (device as any).userId;
     }
 
-    // Find or create glass session in database
-    let dbSession: any = db.prepare(
-      'SELECT * FROM glassSessions WHERE deviceId = ? ORDER BY created_at DESC LIMIT 1'
-    ).get(sessionId);
-    
-    if (!dbSession) {
-      // Create new session with current persona (default to 'home')
-      const result = db.prepare(
-        'INSERT INTO glassSessions (userId, sessionName, deviceId, persona, is_active) VALUES (?, ?, ?, ?, 1)'
-      ).run(dbUserId, `Glass Session ${new Date().toLocaleString()}`, sessionId, 'home');
-      dbSession = db.prepare('SELECT * FROM glassSessions WHERE id = ?').get(result.lastInsertRowid);
-    } else {
-      // Mark session as active
-      db.prepare('UPDATE glassSessions SET is_active = 1 WHERE id = ?').run(dbSession.id);
-    }
+    // Mark all previous sessions for this device as inactive
+    db.prepare('UPDATE glassSessions SET is_active = 0 WHERE deviceId = ?').run(sessionId);
+
+    // ALWAYS create a NEW session on connection (never reuse old sessions)
+    const result = db.prepare(
+      'INSERT INTO glassSessions (userId, sessionName, deviceId, persona, is_active) VALUES (?, ?, ?, ?, 1)'
+    ).run(dbUserId, `Glass Session ${new Date().toLocaleString()}`, sessionId, 'work');
+
+    const dbSession: any = db.prepare('SELECT * FROM glassSessions WHERE id = ?').get(result.lastInsertRowid);
+    console.log(`✅ Created NEW glass session #${dbSession.id} for device ${sessionId}`);
 
     console.log(`📁 Session persona: ${dbSession.persona}`);
 
