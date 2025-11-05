@@ -115,6 +115,7 @@ db.exec(`
     responsePages TEXT,
     currentPage INTEGER DEFAULT 0,
     duration INTEGER,
+    persona TEXT DEFAULT 'work',
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (sessionId) REFERENCES glassSessions(id) ON DELETE CASCADE
   );
@@ -197,6 +198,18 @@ const checkAndAddColumns = () => {
 // Call this after creating the initial tables
 checkAndAddColumns();
 
+// Add persona column to existing glassConversations tables (safe migration)
+try {
+  db.prepare(`
+    SELECT persona FROM glassConversations LIMIT 1
+  `).get();
+} catch (error) {
+  // Column doesn't exist, add it
+  console.log('📊 Adding persona column to glassConversations...');
+  db.prepare('ALTER TABLE glassConversations ADD COLUMN persona TEXT DEFAULT "work"').run();
+  console.log('✅ Migration complete');
+}
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -213,7 +226,7 @@ interface SessionState {
   sessionId: string;
   userId: string;
   session: AppSession;
-  state: 'listening' | 'processing' | 'displaying' | 'paused';
+  state: 'listening' | 'processing' | 'displaying' | 'paused' | 'transcribing';
   currentTranscript: string;
   lastResponse: string;
   conversation: ConversationMessage[];
@@ -222,6 +235,7 @@ interface SessionState {
   displayDuration: number;
   wpm: number;
   dbSessionId?: number;
+  persona?: string;
   autoAdvancePages: boolean;
   pageDisplayDuration: number;
   eventHistory: Array<{
@@ -519,18 +533,21 @@ class PhoneGPTMentraOSApp extends AppServer {
       try {
         const { sessionId } = req.params;
         
-        const session = db.prepare(
+        const session: any = db.prepare(
           'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
         ).get(sessionId, req.user.userId);
-        
+
         if (!session) {
           return res.status(404).json({ error: 'Session not found' });
         }
-        
+
+        // Filter conversations by session AND persona
         const conversations = db.prepare(
-          'SELECT * FROM glassConversations WHERE sessionId = ? ORDER BY timestamp DESC'
-        ).all(sessionId);
-        
+          'SELECT * FROM glassConversations WHERE sessionId = ? AND persona = ? ORDER BY timestamp DESC'
+        ).all(sessionId, session.persona);
+
+        console.log(`📋 Retrieved ${conversations.length} conversations for session ${sessionId} (${session.persona} persona)`);
+
         res.json(conversations || []);
       } catch (error) {
         console.error('Get conversations error:', error);
@@ -543,17 +560,17 @@ class PhoneGPTMentraOSApp extends AppServer {
         const { sessionId } = req.params;
         const { query, response, responsePages, duration } = req.body;
         
-        const session = db.prepare(
+        const session: any = db.prepare(
           'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
         ).get(sessionId, req.user.userId);
-        
+
         if (!session) {
           return res.status(404).json({ error: 'Session not found' });
         }
-        
+
         const result = db.prepare(
-          'INSERT INTO glassConversations (sessionId, query, response, responsePages, duration) VALUES (?, ?, ?, ?, ?)'
-        ).run(sessionId, query, response, JSON.stringify(responsePages || []), duration || 0);
+          'INSERT INTO glassConversations (sessionId, query, response, responsePages, duration, persona) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(sessionId, query, response, JSON.stringify(responsePages || []), duration || 0, session.persona);
         
         db.prepare('UPDATE glassSessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(sessionId);
         
@@ -761,29 +778,27 @@ class PhoneGPTMentraOSApp extends AppServer {
         // Update persona in database
         db.prepare('UPDATE glassSessions SET persona = ? WHERE id = ?').run(persona, sessionId);
 
-        // Update active glass session if connected
-        const glassState = this.sessions.get(sessionId.toString());
-        if (glassState && session.deviceId) {
+        // Update active glass session if connected (use deviceId as the key!)
+        const glassState = this.sessions.get(session.deviceId);
+        if (glassState) {
           // Update the persona in memory
-          (glassState as any).persona = persona;
+          glassState.persona = persona;
 
           // Send notification to glasses display
           const personaEmoji = persona === 'work' ? '💼' : persona === 'home' ? '🏠' : '🎮';
-          const notificationText = `${personaEmoji} Switched to ${persona.toUpperCase()} mode`;
+          const notificationText = `${personaEmoji} ${persona.toUpperCase()} Mode`;
 
           try {
-            await glassState.updateView(ViewType.Text, {
-              text: notificationText
+            await glassState.session.layouts.showTextWall(notificationText, {
+              view: ViewType.MAIN,
+              durationMs: 3000
             });
             console.log(`✅ Sent persona switch notification to glasses: ${notificationText}`);
-
-            // Clear notification after 3 seconds
-            setTimeout(() => {
-              glassState.updateView(ViewType.Text, { text: '' }).catch(() => {});
-            }, 3000);
           } catch (error) {
             console.error('Failed to send glass notification:', error);
           }
+        } else {
+          console.log(`⚠️ No active glass session found for device ${session.deviceId}`);
         }
 
         res.json({
@@ -1609,6 +1624,7 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
       displayDuration: 5000,
       wpm: dbSession.wpm || 180,
       dbSessionId: dbSession.id,
+      persona: dbSession.persona,
       autoAdvancePages: true,
       pageDisplayDuration: dbSession.page_display_duration || 5000,
       eventHistory: [],
@@ -1659,10 +1675,11 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
           durationMs: 2000,
         });
 
-        // Generate AI response with documents
+        // Generate AI response with documents using CURRENT persona
+        const currentPersona = sessionState.persona || dbSession.persona;
         const aiResponse = await this.generateAIResponseWithDocuments(
-          transcript, 
-          dbSession.persona, 
+          transcript,
+          currentPersona,
           dbSession.userId
         );
         
@@ -1682,10 +1699,13 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
         sessionState.currentPageIndex = 0;
         sessionState.state = 'displaying';
 
-        // Save conversation to database
+        // Save conversation to database WITH current persona
+        const currentPersona = sessionState.persona || dbSession.persona;
         db.prepare(
-          'INSERT INTO glassConversations (sessionId, query, response, responsePages) VALUES (?, ?, ?, ?)'
-        ).run(sessionState.dbSessionId, transcript, aiResponse, JSON.stringify(pages));
+          'INSERT INTO glassConversations (sessionId, query, response, responsePages, persona) VALUES (?, ?, ?, ?, ?)'
+        ).run(sessionState.dbSessionId, transcript, aiResponse, JSON.stringify(pages), currentPersona);
+
+        console.log(`💾 Saved conversation to ${currentPersona} persona`);
         
         // Update session activity
         db.prepare('UPDATE glassSessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?')
