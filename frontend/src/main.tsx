@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import AuthPage from './AuthPage'
+import AuthPage from './Authpage'
 import PhoneGPTControl from './PhoneGPTControl'
 import './index.css'
 
