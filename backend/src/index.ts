@@ -304,14 +304,13 @@ class PhoneGPTMentraOSApp extends AppServer {
       next();
     });
 
-    // CORS Configuration
+    // CORS Configuration - Allow all origins and headers for development
     app.use(cors({
-      origin: function(origin: any, callback: any) {
-        callback(null, true); // Allow all origins for development
-      },
+      origin: true, // Allow all origins
       credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization']
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: '*', // Allow all headers
+      exposedHeaders: ['Content-Type', 'Authorization']
     }));
 
     // JSON parsing
