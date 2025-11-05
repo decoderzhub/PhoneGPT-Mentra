@@ -51,11 +51,12 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
   const [currentTranscript, setCurrentTranscript] = useState('');
   const transcriptRef = React.useRef<HTMLDivElement>(null);
 
-  const axiosConfig = {
-    headers: { 
-      Authorization: `Bearer ${localStorage.getItem('token')}` 
+  // Helper to get fresh auth config
+  const getAxiosConfig = () => ({
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('token')}`
     }
-  };
+  });
 
   // Fetch notes on mount or persona change
   useEffect(() => {
@@ -70,7 +71,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
       try {
         const response = await axios.get(
           `${API_URL}/api/glass-sessions/${sessionId}/transcription`,
-          axiosConfig
+          getAxiosConfig()
         );
         if (response.data.transcription) {
           setCurrentTranscript(response.data.transcription);
@@ -105,7 +106,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
     try {
       const response = await axios.get(
         `${API_URL}/api/transcription-notes/${persona}`,
-        axiosConfig
+        getAxiosConfig()
       );
       setNotes(response.data);
     } catch (error) {
@@ -136,7 +137,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
             transcription: currentTranscript,
             persona
           },
-          axiosConfig
+          getAxiosConfig()
         );
 
         console.log('✅ Transcription saved:', response.data);
@@ -157,20 +158,20 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
       const response = await axios.post(
         `${API_URL}/api/transcription-notes/${noteId}/summarize`,
         {},
-        axiosConfig
+        getAxiosConfig()
       );
-      
+
       // Update the note with summary
-      setNotes(prev => prev.map(note => 
-        note.id === noteId 
+      setNotes(prev => prev.map(note =>
+        note.id === noteId
           ? { ...note, summary: response.data.summary }
           : note
       ));
-      
+
       if (selectedNote?.id === noteId) {
         setSelectedNote({ ...selectedNote, summary: response.data.summary });
       }
-      
+
       setActiveTab('summary');
     } catch (error) {
       console.error('Failed to generate summary:', error);
@@ -183,7 +184,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
     try {
       await axios.delete(
         `${API_URL}/api/transcription-notes/${noteId}`,
-        axiosConfig
+        getAxiosConfig()
       );
       setNotes(prev => prev.filter(n => n.id !== noteId));
       if (selectedNote?.id === noteId) {
