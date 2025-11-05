@@ -212,26 +212,27 @@ export default function PhoneGPTControl({ user, token, onLogout }: {
     }
   };
 
-  const fetchConversations = async () => {
-    if (!activeSessionId) return;
-    
+  const fetchConversations = async (sessionId?: number) => {
+    const targetSessionId = sessionId || activeSessionId;
+    if (!targetSessionId) return;
+
     try {
       const response = await axios.get(
-        `${API_URL}/api/glass-sessions/${activeSessionId}/conversations`,
+        `${API_URL}/api/glass-sessions/${targetSessionId}/conversations`,
         axiosConfig
       );
-      
+
       // Sort by timestamp DESC (newest first)
-      const sorted = (response.data || []).sort((a: GlassConversation, b: GlassConversation) => 
+      const sorted = (response.data || []).sort((a: GlassConversation, b: GlassConversation) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
-      
+
       setConversations(sorted);
-      
+
       // Calculate stats
       setStats({
         totalConversations: sorted.length,
-        averageResponseTime: sorted.reduce((acc: number, c: GlassConversation) => 
+        averageResponseTime: sorted.reduce((acc: number, c: GlassConversation) =>
           acc + (c.duration || 0), 0) / (sorted.length || 1),
         activeGlassConnections: glassSessions.filter(s => s.is_active).length
       });
@@ -304,10 +305,46 @@ export default function PhoneGPTControl({ user, token, onLogout }: {
     }
   };
 
+  // Switch to a different session and load all its data
+  const switchToSession = async (sessionId: number) => {
+    try {
+      // Find the session
+      const session = glassSessions.find(s => s.id === sessionId);
+      if (!session) {
+        console.error('Session not found:', sessionId);
+        return;
+      }
+
+      console.log(`🔄 Switching to session ${sessionId} (${session.persona} persona)`);
+
+      // Update active session
+      setActiveSessionId(sessionId);
+
+      // Update persona to match session
+      setActivePersona(session.persona);
+
+      // Update WPM
+      setWpm(session.wpm || 180);
+
+      // Update listening state
+      setIsListening(!session.is_paused);
+
+      // Fetch conversations for this specific session
+      await fetchConversations(sessionId);
+
+      // Refresh documents for the new persona
+      await fetchDocuments();
+
+      console.log(`✅ Switched to session ${sessionId} (${session.persona} persona)`);
+    } catch (error) {
+      console.error('Failed to switch session:', error);
+    }
+  };
+
   const deleteGlassSession = async (sessionId: number) => {
     try {
       await axios.delete(`${API_URL}/api/glass-sessions/${sessionId}`, axiosConfig);
-      
+
       if (activeSessionId === sessionId) {
         setActiveSessionId(null);
         setConversations([]);
@@ -365,7 +402,24 @@ return (
               {personas.map(persona => (
                 <button
                   key={persona.id}
-                  onClick={() => setActivePersona(persona.id)}
+                  onClick={async () => {
+                    setActivePersona(persona.id);
+                    // Update the active session's persona
+                    if (activeSessionId) {
+                      try {
+                        await axios.post(
+                          `${API_URL}/api/glass-sessions/${activeSessionId}/switch-persona`,
+                          { persona: persona.id },
+                          axiosConfig
+                        );
+                        // Refresh documents for new persona
+                        await fetchDocuments();
+                        console.log(`✅ Switched to ${persona.id} persona`);
+                      } catch (error) {
+                        console.error('Failed to switch persona:', error);
+                      }
+                    }
+                  }}
                   className={`px-3 py-1.5 rounded-md flex items-center gap-2 transition-all ${
                     activePersona === persona.id
                       ? 'bg-blue-500 text-white'
@@ -409,7 +463,24 @@ return (
           {personas.map(persona => (
             <button
               key={persona.id}
-              onClick={() => setActivePersona(persona.id)}
+              onClick={async () => {
+                setActivePersona(persona.id);
+                // Update the active session's persona
+                if (activeSessionId) {
+                  try {
+                    await axios.post(
+                      `${API_URL}/api/glass-sessions/${activeSessionId}/switch-persona`,
+                      { persona: persona.id },
+                      axiosConfig
+                    );
+                    // Refresh documents for new persona
+                    await fetchDocuments();
+                    console.log(`✅ Switched to ${persona.id} persona`);
+                  } catch (error) {
+                    console.error('Failed to switch persona:', error);
+                  }
+                }
+              }}
               className={`flex-1 px-2 py-1 rounded-md flex items-center justify-center gap-1 transition-all ${
                 activePersona === persona.id
                   ? 'bg-blue-500 text-white'
@@ -593,8 +664,8 @@ return (
                 {glassSessions.map(session => (
                   <div
                     key={session.id}
-                    onClick={() => {
-                      setActiveSessionId(session.id);
+                    onClick={async () => {
+                      await switchToSession(session.id);
                       setShowSessions(false);
                     }}
                     className={`p-3 rounded-lg cursor-pointer transition-all ${
@@ -802,7 +873,7 @@ return (
               {glassSessions.map(session => (
                 <div
                   key={session.id}
-                  onClick={() => setActiveSessionId(session.id)}
+                  onClick={async () => await switchToSession(session.id)}
                   className={`p-3 rounded-lg cursor-pointer transition-all ${
                     activeSessionId === session.id
                       ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
