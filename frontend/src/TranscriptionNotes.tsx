@@ -34,10 +34,10 @@ interface TranscriptionNotesProps {
   onBack?: () => void;
 }
 
-const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({ 
-  persona, 
+const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
+  persona,
   darkMode,
-  onBack 
+  onBack
 }) => {
   const [notes, setNotes] = useState<TranscriptionNote[]>([]);
   const [selectedNote, setSelectedNote] = useState<TranscriptionNote | null>(null);
@@ -47,6 +47,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
   const [recordingTime, setRecordingTime] = useState(0);
   const [recognition, setRecognition] = useState<any>(null);
   const [currentTranscript, setCurrentTranscript] = useState('');
+  const transcriptRef = React.useRef<HTMLDivElement>(null);
 
   const axiosConfig = {
     headers: { 
@@ -105,6 +106,13 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
     }
     return () => clearInterval(interval);
   }, [isRecording]);
+
+  // Auto-scroll to bottom when transcript updates
+  useEffect(() => {
+    if (transcriptRef.current && isRecording) {
+      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+    }
+  }, [currentTranscript, isRecording]);
 
   const fetchNotes = async () => {
     try {
@@ -259,7 +267,10 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
                   <p className="text-2xl font-light mb-2">{formatDuration(recordingTime)}</p>
                   <p className="text-sm opacity-70">Recording...</p>
                   {currentTranscript && (
-                    <div className="mt-4 p-4 rounded-lg bg-gray-100 dark:bg-gray-700 w-full max-h-64 overflow-y-auto">
+                    <div
+                      ref={transcriptRef}
+                      className="mt-4 p-4 rounded-lg bg-gray-100 dark:bg-gray-700 w-full max-h-64 overflow-y-auto"
+                    >
                       <p className="text-sm whitespace-pre-wrap">{currentTranscript}</p>
                     </div>
                   )}
