@@ -68,21 +68,32 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
       recognitionInstance.interimResults = true;
       recognitionInstance.lang = 'en-US';
 
+      let finalTranscript = '';
+
       recognitionInstance.onresult = (event: any) => {
-        let finalTranscript = '';
-        for (let i = 0; i < event.results.length; i++) {
+        let interimTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + ' ';
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
           }
         }
-        if (finalTranscript) {
-          setCurrentTranscript(prev => prev + finalTranscript);
+
+        setCurrentTranscript(finalTranscript + interimTranscript);
+      };
+
+      recognitionInstance.onend = () => {
+        if (isRecording) {
+          recognitionInstance.start();
         }
       };
 
       setRecognition(recognitionInstance);
     }
-  }, []);
+  }, [isRecording]);
 
   // Timer for recording
   useEffect(() => {
@@ -116,31 +127,36 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
     }
   };
 
-  const stopRecording = async () => {
+  const stopRecording = () => {
     if (recognition) {
       recognition.stop();
       setIsRecording(false);
-      
-      // Save the transcript
-      if (currentTranscript.trim()) {
-        try {
-          const response = await axios.post(
-            `${API_URL}/api/transcription-notes`,
-            {
-              persona,
-              title: `Recording ${new Date().toLocaleString()}`,
-              transcript: currentTranscript,
-              duration: recordingTime
-            },
-            axiosConfig
-          );
-          
-          await fetchNotes();
-          setCurrentTranscript('');
-          setRecordingTime(0);
-        } catch (error) {
-          console.error('Failed to save transcript:', error);
+    }
+  };
+
+  const saveTranscript = async () => {
+    if (currentTranscript.trim()) {
+      try {
+        const response = await axios.post(
+          `${API_URL}/api/transcription-notes`,
+          {
+            persona,
+            title: `Recording ${new Date().toLocaleString()}`,
+            transcript: currentTranscript,
+            duration: recordingTime
+          },
+          axiosConfig
+        );
+
+        await fetchNotes();
+        setCurrentTranscript('');
+        setRecordingTime(0);
+
+        if (response.data) {
+          setSelectedNote(response.data);
         }
+      } catch (error) {
+        console.error('Failed to save transcript:', error);
       }
     }
   };
@@ -222,7 +238,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
             darkMode ? 'bg-gray-800' : 'bg-white'
           } shadow-lg`}>
             <div className="flex flex-col items-center">
-              {!isRecording ? (
+              {!isRecording && !currentTranscript ? (
                 <>
                   <button
                     onClick={startRecording}
@@ -232,7 +248,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
                   </button>
                   <p className="text-sm opacity-70">Tap to Record</p>
                 </>
-              ) : (
+              ) : isRecording ? (
                 <>
                   <button
                     onClick={stopRecording}
@@ -243,10 +259,39 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
                   <p className="text-2xl font-light mb-2">{formatDuration(recordingTime)}</p>
                   <p className="text-sm opacity-70">Recording...</p>
                   {currentTranscript && (
-                    <div className="mt-4 p-3 rounded-lg bg-gray-100 dark:bg-gray-700 w-full">
-                      <p className="text-sm">{currentTranscript}</p>
+                    <div className="mt-4 p-4 rounded-lg bg-gray-100 dark:bg-gray-700 w-full max-h-64 overflow-y-auto">
+                      <p className="text-sm whitespace-pre-wrap">{currentTranscript}</p>
                     </div>
                   )}
+                </>
+              ) : (
+                <>
+                  <div className="w-full mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm opacity-70">Recording complete</p>
+                      <p className="text-sm font-medium">{formatDuration(recordingTime)}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-gray-100 dark:bg-gray-700 w-full max-h-96 overflow-y-auto mb-4">
+                      <p className="text-sm whitespace-pre-wrap">{currentTranscript}</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setCurrentTranscript('');
+                          setRecordingTime(0);
+                        }}
+                        className="flex-1 py-3 px-4 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
+                      >
+                        Discard
+                      </button>
+                      <button
+                        onClick={saveTranscript}
+                        className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium shadow-lg hover:shadow-xl transition-all"
+                      >
+                        Save & Summarize
+                      </button>
+                    </div>
+                  </div>
                 </>
               )}
             </div>
