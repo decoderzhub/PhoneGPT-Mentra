@@ -3,18 +3,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Mic,
-  FileText,
   Brain,
-  Clock,
-  Calendar,
   ChevronLeft,
   MoreVertical,
   Sparkles,
   Trash2,
-  Edit3,
-  Volume2,
-  PauseCircle,
-  PlayCircle
+  PauseCircle
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8112';
@@ -49,7 +43,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [recognition, setRecognition] = useState<any>(null);
+  const [] = useState<any>(null); // Recognition state reserved
   const [currentTranscript, setCurrentTranscript] = useState('');
   const transcriptRef = React.useRef<HTMLDivElement>(null);
 
@@ -88,7 +82,7 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
 
   // Timer for recording
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (isRecording) {
       interval = setInterval(() => {
         setRecordingTime(prev => prev + 1);

@@ -39,7 +39,7 @@ const DashboardAdvanced: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Initialize WebSocket connection
   useEffect(() => {

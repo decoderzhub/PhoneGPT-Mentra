@@ -7,8 +7,6 @@ import {
   MicOff,
   Play,
   Pause,
-  ChevronRight,
-  ChevronLeft,
   Upload,
   User,
   Briefcase,
@@ -25,13 +23,7 @@ import {
   MessageCircle,
   Zap,
   Volume2,
-  ArrowDown,
   Menu,
-  ChevronDown,
-  Navigation,
-  ScrollText,
-  Edit3,
-  Languages,
   Brain,
   Activity
 } from 'lucide-react';
@@ -93,7 +85,7 @@ interface Document {
 // Main Component
 // ============================================================================
 
-export default function PhoneGPTControl({ user, token, onLogout }: {
+export default function PhoneGPTControl({ token, onLogout }: {
   user?: User;
   token?: string;
   onLogout?: () => void;
@@ -119,7 +111,7 @@ export default function PhoneGPTControl({ user, token, onLogout }: {
   const [conversations, setConversations] = useState<GlassConversation[]>([]);
   const [isListening, setIsListening] = useState(true);
   const [wpm, setWpm] = useState(180);
-  const [currentDisplay, setCurrentDisplay] = useState<string>('');
+  const [currentDisplay] = useState<string>(''); // For display state
   const [pageDisplayDuration, setPageDisplayDuration] = useState(5000); // Add this
   const [autoAdvancePages, setAutoAdvancePages] = useState(true); // Add this
 
@@ -127,8 +119,8 @@ export default function PhoneGPTControl({ user, token, onLogout }: {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
-  // Modal page state
-  const [modalCurrentPage, setModalCurrentPage] = useState(0);
+  // Modal page state (reserved for future use)
+  const [] = useState(0);
   
   // Transcription Notes
   const [showTranscription, setShowTranscription] = useState(false);
@@ -291,9 +283,10 @@ export default function PhoneGPTControl({ user, token, onLogout }: {
     }
   };
 
-  const scrollToBottom = () => {
-    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  };
+  // Utility function for auto-scroll (available for future use)
+  // const scrollToBottom = () => {
+  //   conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  // };
 
   const updateWPM = async (newWpm: number) => {
     if (!activeSessionId) return;

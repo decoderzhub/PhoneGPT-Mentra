@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Moon, Sun, BarChart3, Zap, AlertCircle, CheckCircle, Clock, Settings } from 'lucide-react';
+import { Moon, Sun, BarChart3, Zap, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 
 interface LogEntry {
   id: string;
@@ -34,7 +34,7 @@ const Dashboard: React.FC = () => {
     const mockStats = {
       activeSessions: Math.floor(Math.random() * 100) + 20,
       totalRequests: Math.floor(Math.random() * 10000) + 5000,
-      errorRate: (Math.random() * 5).toFixed(2),
+      errorRate: parseFloat((Math.random() * 5).toFixed(2)),
       avgResponseTime: Math.floor(Math.random() * 500) + 50,
       uptime: '99.9%'
     };
