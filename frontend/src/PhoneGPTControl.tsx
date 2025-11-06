@@ -9,7 +9,9 @@ import ConversationList from './components/ConversationList';
 import StatsDisplay from './components/StatsDisplay';
 import EmptySessionState from './components/EmptySessionState';
 import UploadModal from './components/UploadModal';
-// NOTE: Additional modals available: SettingsModal, ConversationModal, DocumentModal
+import SettingsModal from './components/SettingsModal';
+import ConversationModal from './components/ConversationModal';
+import DocumentModal from './components/DocumentModal';
 import {
   Glasses,
   Plus,
@@ -26,8 +28,6 @@ import {
   LogOut,
   Moon,
   Sun,
-  Clock,
-  X,
   FileText,
   Trash2,
   MessageCircle,
@@ -962,40 +962,13 @@ return (
       </div>
     )}
 
-    {/* Conversation Modal */}
+    {/* Conversation Modal - Using Component */}
     {showConversationModal && selectedConversation && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto`}>
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-xl font-semibold">Conversation Details</h3>
-            <button
-              onClick={() => setShowConversationModal(false)}
-              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-medium text-blue-500 mb-2">Question:</h4>
-              <p className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">{selectedConversation.query}</p>
-            </div>
-            
-            <div>
-              <h4 className="font-medium text-purple-500 mb-2">Response:</h4>
-              <p className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg whitespace-pre-wrap">
-                {selectedConversation.response}
-              </p>
-            </div>
-            
-            <div className="text-sm text-gray-500">
-              <Clock className="w-4 h-4 inline mr-1" />
-              {new Date(selectedConversation.timestamp).toLocaleString()}
-            </div>
-          </div>
-        </div>
-      </div>
+      <ConversationModal
+        conversation={selectedConversation}
+        darkMode={darkMode}
+        onClose={() => setShowConversationModal(false)}
+      />
     )}
 
     {/* Upload Modal - Using Component */}
@@ -1027,145 +1000,56 @@ return (
       />
     )}
 
-    {/* Settings Modal */}
+    {/* Settings Modal - Using Component */}
     {showSettingsModal && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full`}>
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-xl font-semibold">Settings</h3>
-            <button
-              onClick={() => setShowSettingsModal(false)}
-              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Words Per Minute (WPM)</label>
-              <input
-                type="range"
-                min="60"
-                max="300"
-                value={wpm}
-                onChange={(e) => updateWPM(parseInt(e.target.value))}
-                className="w-full"
-              />
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>60</span>
-                <span className="font-medium">{wpm} WPM</span>
-                <span>300</span>
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">Page Display Duration (Glasses)</label>
-              <select 
-                value={pageDisplayDuration}
-                onChange={async (e) => {
-                  const duration = parseInt(e.target.value);
-                  setPageDisplayDuration(duration);
-                  if (activeSessionId) {
-                    try {
-                      await axios.post(
-                        `${API_URL}/api/glass-sessions/${activeSessionId}/page-settings`,
-                        { pageDisplayDuration: duration },
-                        axiosConfig
-                      );
-                    } catch (error) {
-                      console.error('Failed to update page duration:', error);
-                    }
-                  }
-                }}
-                className="w-full p-2 rounded-lg border dark:bg-gray-700 dark:border-gray-600"
-              >
-                <option value="3000">3 seconds per page</option>
-                <option value="5000">5 seconds per page</option>
-                <option value="7000">7 seconds per page</option>
-                <option value="10000">10 seconds per page</option>
-                <option value="15000">15 seconds per page</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-2">Auto-Advance Pages</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={autoAdvancePages}
-                  onChange={async (e) => {
-                    const enabled = e.target.checked;
-                    setAutoAdvancePages(enabled);
-                    if (activeSessionId) {
-                      try {
-                        await axios.post(
-                          `${API_URL}/api/glass-sessions/${activeSessionId}/page-settings`,
-                          { autoAdvance: enabled },
-                          axiosConfig
-                        );
-                      } catch (error) {
-                        console.error('Failed to update auto-advance:', error);
-                      }
-                    }
-                  }}
-                  className="w-4 h-4 rounded"
-                />
-                <span className="text-sm">Automatically cycle through response pages</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SettingsModal
+        darkMode={darkMode}
+        wpm={wpm}
+        pageDisplayDuration={pageDisplayDuration}
+        autoAdvancePages={autoAdvancePages}
+        onClose={() => setShowSettingsModal(false)}
+        onWpmChange={updateWPM}
+        onPageDurationChange={async (duration) => {
+          setPageDisplayDuration(duration);
+          if (activeSessionId) {
+            try {
+              await axios.post(
+                `${API_URL}/api/glass-sessions/${activeSessionId}/page-settings`,
+                { pageDisplayDuration: duration },
+                axiosConfig
+              );
+            } catch (error) {
+              console.error('Failed to update page duration:', error);
+            }
+          }
+        }}
+        onAutoAdvanceChange={async (enabled) => {
+          setAutoAdvancePages(enabled);
+          if (activeSessionId) {
+            try {
+              await axios.post(
+                `${API_URL}/api/glass-sessions/${activeSessionId}/page-settings`,
+                { autoAdvance: enabled },
+                axiosConfig
+              );
+            } catch (error) {
+              console.error('Failed to update auto-advance:', error);
+            }
+          }
+        }}
+      />
     )}
 
-    {/* Document Viewer Modal */}
+    {/* Document Viewer Modal - Using Component */}
     {showDocumentModal && selectedDocument && (
-      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-        <div className={`max-w-3xl w-full max-h-[90vh] rounded-2xl overflow-hidden ${
-          darkMode ? 'bg-gray-900' : 'bg-white'
-        }`}>
-          {/* Header */}
-          <div className={`p-4 border-b flex items-center justify-between ${
-            darkMode ? 'border-gray-700' : 'border-gray-200'
-          }`}>
-            <div className="flex items-center gap-3">
-              <FileText className="w-5 h-5 text-purple-500" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold">{selectedDocument.fileName}</h3>
-                  {selectedDocument.type === 'transcription' && (
-                    <span className="px-2 py-0.5 text-xs font-semibold rounded bg-blue-500 text-white">
-                      NOTE
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500">
-                  {new Date(selectedDocument.created_at).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                setShowDocumentModal(false);
-                setSelectedDocument(null);
-              }}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className={`p-6 overflow-y-auto max-h-[calc(90vh-80px)] ${
-            darkMode ? 'text-gray-200' : 'text-gray-800'
-          }`}>
-            <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
-              {selectedDocument.content}
-            </div>
-          </div>
-        </div>
-      </div>
+      <DocumentModal
+        document={selectedDocument}
+        darkMode={darkMode}
+        onClose={() => {
+          setShowDocumentModal(false);
+          setSelectedDocument(null);
+        }}
+      />
     )}
   </div>
 );
