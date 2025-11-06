@@ -738,6 +738,12 @@ return (
                           }`}>
                             {session.persona}
                           </span>
+                          {session.conversation_state === 'recording' && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />
+                              Recording
+                            </span>
+                          )}
                           {session.is_active && (
                             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                           )}
@@ -1024,10 +1030,29 @@ return (
                 {/* Controls */}
                 <div className="flex justify-between items-center mb-4">
                   <div className="flex items-center gap-3">
+                    {/* Start/Stop Conversation Buttons */}
+                    {activeSession.conversation_state === 'idle' ? (
+                      <button
+                        onClick={startConversation}
+                        className="px-4 py-2 rounded-lg flex items-center gap-2 transition-all bg-blue-500 text-white hover:bg-blue-600"
+                      >
+                        <Play className="w-4 h-4" />
+                        Start Conversation
+                      </button>
+                    ) : activeSession.conversation_state === 'recording' ? (
+                      <button
+                        onClick={stopConversation}
+                        className="px-4 py-2 rounded-lg flex items-center gap-2 transition-all bg-red-500 text-white hover:bg-red-600"
+                      >
+                        <Pause className="w-4 h-4" />
+                        Stop Conversation
+                      </button>
+                    ) : null}
+
                     <button
                       onClick={toggleListening}
                       className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${
-                        isListening 
+                        isListening
                           ? 'bg-green-500 text-white hover:bg-green-600'
                           : 'bg-red-500 text-white hover:bg-red-600'
                       }`}
@@ -1050,6 +1075,17 @@ return (
                     Upload Doc
                   </button>
                 </div>
+
+                {/* Conversation Status */}
+                {activeSession.conversation_state === 'recording' && activeSession.conversation_name && (
+                  <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border-l-4 border-blue-500">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                      <span className="font-semibold text-sm">Recording:</span>
+                      <span className="text-sm">{activeSession.conversation_name}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Current Display */}
                 {currentDisplay && (
