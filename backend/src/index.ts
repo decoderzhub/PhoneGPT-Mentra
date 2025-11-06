@@ -6,25 +6,26 @@ console.log = function(...args: any[]) {
 };
 
 const originalStderr = process.stderr.write;
-process.stderr.write = function(str: any, ...args: any[]) {
+process.stderr.write = function(str: any, ...args: any[]): boolean {
   if (str?.includes?.('[auth.middleware]')) return true;
-  return originalStderr.apply(process.stderr, [str, ...args]);
+  return originalStderr.call(process.stderr, str, ...args);
 };
 
 import { AppServer, AppSession, ViewType } from '@mentra/sdk';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import axios from 'axios';
 import Anthropic from '@anthropic-ai/sdk';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import path from 'path';
 import { PDFParse, TextResult } from 'pdf-parse'
 
-dotenv.config();
+import { config } from './config';
+import { db, initializeDatabase } from './database';
+import { authenticateToken } from './middleware/auth';
+import { ConversationMessage, SessionState, QueuedEvent, JWTPayload } from './types';
 
 const originalError = console.error;
 console.error = function(...args: any[]) {
@@ -33,16 +34,8 @@ console.error = function(...args: any[]) {
   originalError.apply(console, args);
 };
 
-// ============================================================================
-// Environment Configuration
-// ============================================================================
-const PACKAGE_NAME = process.env.PACKAGE_NAME ?? (() => { throw new Error('PACKAGE_NAME is not set in .env file'); })();
-const MENTRAOS_API_KEY = process.env.MENTRAOS_API_KEY ?? (() => { throw new Error('MENTRAOS_API_KEY is not set in .env file'); })();
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? (() => { throw new Error('ANTHROPIC_API_KEY is not set in .env file'); })();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret-key-change-in-production';
-const PORT = parseInt(process.env.PORT || '8112');
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8112';
-const LLM_MODEL = process.env.LLM_MODEL || 'claude-3-haiku-20240307';
+// Environment Configuration - Using config module
+const { packageName: PACKAGE_NAME, mentraosApiKey: MENTRAOS_API_KEY, anthropicApiKey: ANTHROPIC_API_KEY, jwtSecret: JWT_SECRET, port: PORT, backendUrl: BACKEND_URL, llmModel: LLM_MODEL } = config;
 
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
@@ -54,286 +47,8 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// ============================================================================
-// Database Setup
-// ============================================================================
-const db = new Database('phonegpt.db');
-
-// Initialize all database tables
-db.exec(`
-  -- Users table
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    name TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_login DATETIME
-  );
-
-  -- Chat sessions (web interface)
-  CREATE TABLE IF NOT EXISTS chatSessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER NOT NULL,
-    sessionName TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  -- Chat messages
-  CREATE TABLE IF NOT EXISTS chatMessages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sessionId INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (sessionId) REFERENCES chatSessions(id) ON DELETE CASCADE
-  );
-
-  -- Glass sessions (MentraOS glasses)
-  CREATE TABLE IF NOT EXISTS glassSessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER NOT NULL,
-    sessionName TEXT NOT NULL,
-    deviceId TEXT,
-    persona TEXT DEFAULT 'work',
-    wpm INTEGER DEFAULT 180,
-    is_active BOOLEAN DEFAULT 0,
-    is_paused BOOLEAN DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  -- Glass conversations (Q&A pairs from glasses)
-  CREATE TABLE IF NOT EXISTS glassConversations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sessionId INTEGER NOT NULL,
-    query TEXT NOT NULL,
-    response TEXT NOT NULL,
-    responsePages TEXT,
-    currentPage INTEGER DEFAULT 0,
-    duration INTEGER,
-    persona TEXT DEFAULT 'work',
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (sessionId) REFERENCES glassSessions(id) ON DELETE CASCADE
-  );
-
-  -- Documents with persona support
-  CREATE TABLE IF NOT EXISTS documents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER NOT NULL,
-    fileName TEXT NOT NULL,
-    content TEXT NOT NULL,
-    persona TEXT DEFAULT 'work',
-    embedding BLOB,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  -- User personas settings
-  CREATE TABLE IF NOT EXISTS userPersonas (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER NOT NULL,
-    persona TEXT NOT NULL,
-    settings TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(userId, persona),
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  -- MentraOS devices
-  CREATE TABLE IF NOT EXISTS mentraosDevices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    deviceId TEXT UNIQUE NOT NULL,
-    userId INTEGER NOT NULL,
-    sessionId INTEGER,
-    deviceModel TEXT,
-    registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_sync DATETIME,
-    battery_level INTEGER,
-    is_connected BOOLEAN DEFAULT 1,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (sessionId) REFERENCES glassSessions(id) ON DELETE CASCADE
-  );
-
-  -- Transcription notes for each persona
-  CREATE TABLE IF NOT EXISTS transcriptionNotes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER NOT NULL,
-    persona TEXT NOT NULL,
-    title TEXT,
-    transcript TEXT NOT NULL,
-    summary TEXT,
-    duration INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
-`);
-
-const checkAndAddColumns = () => {
-  try {
-    // Check if columns already exist
-    const tableInfo = db.prepare("PRAGMA table_info(glassSessions)").all();
-    const columnNames = tableInfo.map((col: any) => col.name);
-    
-    // Add page_display_duration if it doesn't exist
-    if (!columnNames.includes('page_display_duration')) {
-      db.exec('ALTER TABLE glassSessions ADD COLUMN page_display_duration INTEGER DEFAULT 5000');
-      console.log('✅ Added page_display_duration column to glassSessions');
-    }
-    
-    // Add auto_advance_pages if it doesn't exist
-    if (!columnNames.includes('auto_advance_pages')) {
-      db.exec('ALTER TABLE glassSessions ADD COLUMN auto_advance_pages BOOLEAN DEFAULT 1');
-      console.log('✅ Added auto_advance_pages column to glassSessions');
-    }
-  } catch (error) {
-    console.log('Database columns already exist or error adding them:', error);
-  }
-};
-
-// Call this after creating the initial tables
-checkAndAddColumns();
-
-// Add persona column to existing glassConversations tables (safe migration)
-try {
-  db.prepare(`
-    SELECT persona FROM glassConversations LIMIT 1
-  `).get();
-} catch (error) {
-  // Column doesn't exist, add it
-  console.log('📊 Adding persona column to glassConversations...');
-  db.prepare('ALTER TABLE glassConversations ADD COLUMN persona TEXT DEFAULT "work"').run();
-  console.log('✅ Migration complete');
-}
-
-// Add type column to documents table (safe migration)
-try {
-  db.prepare(`
-    SELECT type FROM documents LIMIT 1
-  `).get();
-} catch (error) {
-  // Column doesn't exist, add it
-  console.log('📊 Adding type column to documents...');
-  db.prepare('ALTER TABLE documents ADD COLUMN type TEXT DEFAULT "upload"').run();
-  console.log('✅ Migration complete');
-}
-
-// Add conversation_state column to glassSessions (safe migration)
-try {
-  db.prepare(`
-    SELECT conversation_state FROM glassSessions LIMIT 1
-  `).get();
-} catch (error) {
-  // Column doesn't exist, add it
-  console.log('📊 Adding conversation_state column to glassSessions...');
-  db.prepare('ALTER TABLE glassSessions ADD COLUMN conversation_state TEXT DEFAULT "idle"').run();
-  console.log('✅ Migration complete');
-}
-
-// Add active_conversation_id column to glassSessions (safe migration)
-try {
-  db.prepare(`
-    SELECT active_conversation_id FROM glassSessions LIMIT 1
-  `).get();
-} catch (error) {
-  // Column doesn't exist, add it
-  console.log('📊 Adding active_conversation_id column to glassSessions...');
-  db.prepare('ALTER TABLE glassSessions ADD COLUMN active_conversation_id INTEGER').run();
-  console.log('✅ Migration complete');
-}
-
-// Add conversation_name column to glassSessions (safe migration)
-try {
-  db.prepare(`
-    SELECT conversation_name FROM glassSessions LIMIT 1
-  `).get();
-} catch (error) {
-  // Column doesn't exist, add it
-  console.log('📊 Adding conversation_name column to glassSessions...');
-  db.prepare('ALTER TABLE glassSessions ADD COLUMN conversation_name TEXT').run();
-  console.log('✅ Migration complete');
-}
-
-// ============================================================================
-// Type Definitions
-// ============================================================================
-interface ConversationMessage {
-  id: string;
-  timestamp: string;
-  query: string;
-  response: string;
-  pages: string[];
-  currentPage: number;
-}
-
-interface SessionState {
-  sessionId: string;
-  userId: string;
-  session: AppSession;
-  state: 'listening' | 'processing' | 'displaying' | 'paused' | 'transcribing';
-  currentTranscript: string;
-  lastResponse: string;
-  conversation: ConversationMessage[];
-  currentPageIndex: number;
-  isPaused: boolean;
-  displayDuration: number;
-  wpm: number;
-  dbSessionId?: number;
-  persona?: string;
-  autoAdvancePages: boolean;
-  pageDisplayDuration: number;
-  eventHistory: Array<{
-    type: string;
-    data: any;
-    timestamp: string;
-  }>;
-}
-
-interface QueuedEvent {
-  type: string;
-  data: any;
-  timestamp: string;
-  sessionId?: string;
-}
-
-interface JWTPayload {
-  userId: number;
-  email: string;
-}
-
-// ============================================================================
-// Authentication Middleware
-// ============================================================================
-function authenticateToken(req: any, res: Response, next: any) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  console.log('🔐 Auth check:', {
-    path: req.path,
-    hasAuthHeader: !!authHeader,
-    hasToken: !!token,
-    tokenPreview: token ? token.substring(0, 20) + '...' : 'none'
-  });
-
-  if (!token) {
-    console.log('❌ No token provided');
-    return res.status(401).json({ error: 'Access token required' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-    if (err) {
-      console.log('❌ Token verification failed:', err.message);
-      return res.status(403).json({ error: 'Invalid or expired token' });
-    }
-    console.log('✅ Token verified for user:', user.userId);
-    req.user = user;
-    next();
-  });
-}
+// Database Setup - Using database module
+initializeDatabase();
 
 // ============================================================================
 // PhoneGPT MentraOS App Class
