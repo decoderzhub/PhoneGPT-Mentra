@@ -1112,6 +1112,7 @@ return (
             persona={activePersona}
             darkMode={darkMode}
             sessionId={activeSessionId}
+            onDocumentSaved={fetchDocuments}
             onBack={async () => {
               if (activeSessionId) {
                 try {

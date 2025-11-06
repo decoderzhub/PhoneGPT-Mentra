@@ -33,13 +33,15 @@ interface TranscriptionNotesProps {
   darkMode: boolean;
   sessionId?: number | null;
   onBack?: () => void;
+  onDocumentSaved?: () => void;
 }
 
 const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
   persona,
   darkMode,
   sessionId,
-  onBack
+  onBack,
+  onDocumentSaved
 }) => {
   const [notes, setNotes] = useState<TranscriptionNote[]>([]);
   const [selectedNote, setSelectedNote] = useState<TranscriptionNote | null>(null);
@@ -142,8 +144,11 @@ const TranscriptionNotes: React.FC<TranscriptionNotesProps> = ({
 
         console.log('✅ Transcription saved:', response.data);
 
-        // Refresh documents list (transcription was saved as a document)
-        await fetchNotes();
+        // Notify parent to refresh documents list
+        if (onDocumentSaved) {
+          onDocumentSaved();
+        }
+
         setCurrentTranscript('');
         setRecordingTime(0);
       } catch (error) {
