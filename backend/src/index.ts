@@ -222,6 +222,42 @@ try {
   console.log('✅ Migration complete');
 }
 
+// Add conversation_state column to glassSessions (safe migration)
+try {
+  db.prepare(`
+    SELECT conversation_state FROM glassSessions LIMIT 1
+  `).get();
+} catch (error) {
+  // Column doesn't exist, add it
+  console.log('📊 Adding conversation_state column to glassSessions...');
+  db.prepare('ALTER TABLE glassSessions ADD COLUMN conversation_state TEXT DEFAULT "idle"').run();
+  console.log('✅ Migration complete');
+}
+
+// Add active_conversation_id column to glassSessions (safe migration)
+try {
+  db.prepare(`
+    SELECT active_conversation_id FROM glassSessions LIMIT 1
+  `).get();
+} catch (error) {
+  // Column doesn't exist, add it
+  console.log('📊 Adding active_conversation_id column to glassSessions...');
+  db.prepare('ALTER TABLE glassSessions ADD COLUMN active_conversation_id INTEGER').run();
+  console.log('✅ Migration complete');
+}
+
+// Add conversation_name column to glassSessions (safe migration)
+try {
+  db.prepare(`
+    SELECT conversation_name FROM glassSessions LIMIT 1
+  `).get();
+} catch (error) {
+  // Column doesn't exist, add it
+  console.log('📊 Adding conversation_name column to glassSessions...');
+  db.prepare('ALTER TABLE glassSessions ADD COLUMN conversation_name TEXT').run();
+  console.log('✅ Migration complete');
+}
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -880,6 +916,87 @@ class PhoneGPTMentraOSApp extends AppServer {
         res.json({ message: 'Session paused for transcription' });
       } catch (error) {
         console.error('Pause session error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // Start a conversation (begin recording Q&A)
+    app.post('/api/glass-sessions/:sessionId/start-conversation', authenticateToken, async (req: any, res: Response) => {
+      try {
+        const { sessionId } = req.params;
+        const { conversationName } = req.body;
+
+        const session: any = db.prepare(
+          'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
+        ).get(sessionId, req.user.userId);
+
+        if (!session) {
+          return res.status(404).json({ error: 'Session not found' });
+        }
+
+        // Update session to recording state
+        const convName = conversationName || `Conversation ${new Date().toLocaleString()}`;
+        db.prepare('UPDATE glassSessions SET conversation_state = ?, conversation_name = ? WHERE id = ?')
+          .run('recording', convName, sessionId);
+
+        // Update in-memory session state
+        const glassState = this.sessions.get(session.deviceId);
+        if (glassState) {
+          console.log(`🎙️  Started conversation for session ${sessionId}: "${convName}"`);
+
+          // Notify glasses
+          await glassState.session.layouts.showTextWall(`🎙️ Recording Started\n\n"${convName}"\n\nSpeak your question`, {
+            view: ViewType.MAIN,
+            durationMs: 3000
+          });
+        }
+
+        res.json({
+          message: 'Conversation started',
+          conversationName: convName,
+          state: 'recording'
+        });
+      } catch (error) {
+        console.error('Start conversation error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // Stop a conversation (end recording)
+    app.post('/api/glass-sessions/:sessionId/stop-conversation', authenticateToken, async (req: any, res: Response) => {
+      try {
+        const { sessionId } = req.params;
+
+        const session: any = db.prepare(
+          'SELECT * FROM glassSessions WHERE id = ? AND userId = ?'
+        ).get(sessionId, req.user.userId);
+
+        if (!session) {
+          return res.status(404).json({ error: 'Session not found' });
+        }
+
+        // Update session to idle state
+        db.prepare('UPDATE glassSessions SET conversation_state = ?, conversation_name = NULL WHERE id = ?')
+          .run('idle', sessionId);
+
+        // Update in-memory session state
+        const glassState = this.sessions.get(session.deviceId);
+        if (glassState) {
+          console.log(`⏹️  Stopped conversation for session ${sessionId}`);
+
+          // Notify glasses
+          await glassState.session.layouts.showTextWall(`⏹️ Recording Stopped\n\nPress START for new conversation`, {
+            view: ViewType.MAIN,
+            durationMs: 3000
+          });
+        }
+
+        res.json({
+          message: 'Conversation stopped',
+          state: 'idle'
+        });
+      } catch (error) {
+        console.error('Stop conversation error:', error);
         res.status(500).json({ error: 'Internal server error' });
       }
     });
@@ -1632,15 +1749,15 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
     // Mark all previous sessions for this device as inactive
     db.prepare('UPDATE glassSessions SET is_active = 0 WHERE deviceId = ?').run(sessionId);
 
-    // ALWAYS create a NEW session on connection (never reuse old sessions)
+    // Create an IDLE session on connection (conversation not started yet)
     const result = db.prepare(
-      'INSERT INTO glassSessions (userId, sessionName, deviceId, persona, is_active) VALUES (?, ?, ?, ?, 1)'
-    ).run(dbUserId, `Glass Session ${new Date().toLocaleString()}`, sessionId, 'work');
+      'INSERT INTO glassSessions (userId, sessionName, deviceId, persona, is_active, conversation_state) VALUES (?, ?, ?, ?, 1, ?)'
+    ).run(dbUserId, `Glass Session ${new Date().toLocaleString()}`, sessionId, 'work', 'idle');
 
     const dbSession: any = db.prepare('SELECT * FROM glassSessions WHERE id = ?').get(result.lastInsertRowid);
-    console.log(`✅ Created NEW glass session #${dbSession.id} for device ${sessionId}`);
-
+    console.log(`✅ Created IDLE glass session #${dbSession.id} for device ${sessionId}`);
     console.log(`📁 Session persona: ${dbSession.persona}`);
+    console.log(`💬 Conversation state: ${dbSession.conversation_state}`);
 
     const sessionState: SessionState = {
       sessionId,
@@ -1664,7 +1781,7 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
     this.sessions.set(sessionId, sessionState);
     this.addEvent('glass_connected', { sessionId, userId }, sessionId);
 
-    session.layouts.showTextWall(`✨ PhoneGPT Connected\n\n${dbSession.persona.toUpperCase()} Mode Active\n\nReady for voice commands!`, {
+    session.layouts.showTextWall(`✨ PhoneGPT Connected\n\n${dbSession.persona.toUpperCase()} Mode\n\nPress START to begin conversation`, {
       view: ViewType.MAIN,
       durationMs: 3000,
     });
@@ -1691,6 +1808,13 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
       // If paused but NOT in transcribing mode, ignore completely
       if (sessionState.isPaused) {
         console.log('🔇 Microphone paused - ignoring voice input');
+        return;
+      }
+
+      // Check if conversation has been started
+      const currentSession: any = db.prepare('SELECT conversation_state FROM glassSessions WHERE id = ?').get(sessionState.dbSessionId);
+      if (!currentSession || currentSession.conversation_state !== 'recording') {
+        console.log('⏸️  Conversation not started - ignoring voice input');
         return;
       }
 

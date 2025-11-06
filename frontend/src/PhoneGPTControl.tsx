@@ -65,6 +65,8 @@ interface GlassSession {
   is_paused: boolean;
   wpm: number;
   persona: string;
+  conversation_state?: string;
+  conversation_name?: string;
 }
 
 interface GlassConversation {
@@ -244,9 +246,42 @@ export default function PhoneGPTControl({ user, token, onLogout }: {
     }
   };
 
+  const startConversation = async () => {
+    if (!activeSessionId) return;
+
+    try {
+      const conversationName = prompt('Enter conversation name:') || `Conversation ${new Date().toLocaleString()}`;
+      await axios.post(
+        `${API_URL}/api/glass-sessions/${activeSessionId}/start-conversation`,
+        { conversationName },
+        axiosConfig
+      );
+      await fetchGlassSessions();
+      console.log('✅ Conversation started');
+    } catch (error) {
+      console.error('Failed to start conversation:', error);
+    }
+  };
+
+  const stopConversation = async () => {
+    if (!activeSessionId) return;
+
+    try {
+      await axios.post(
+        `${API_URL}/api/glass-sessions/${activeSessionId}/stop-conversation`,
+        {},
+        axiosConfig
+      );
+      await fetchGlassSessions();
+      console.log('✅ Conversation stopped');
+    } catch (error) {
+      console.error('Failed to stop conversation:', error);
+    }
+  };
+
   const toggleListening = async () => {
     if (!activeSessionId) return;
-    
+
     try {
       const endpoint = isListening ? 'pause' : 'resume';
       await axios.post(`${API_URL}/api/glass-sessions/${activeSessionId}/${endpoint}`, {}, axiosConfig);
