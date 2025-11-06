@@ -1,10 +1,5 @@
 import TranscriptionNotes from './TranscriptionNotes';
 import React, { useState, useEffect, useRef } from 'react';
-
-// NOTE: Modular components are available in ./components/ for future refactoring:
-// - MobileMetroGrid, MobileSessionsList, MobileDocumentsList
-// - DesktopSessionsSidebar, DesktopDocumentsSidebar
-// - ConversationView, Header
 import {
   Glasses,
   Plus,
