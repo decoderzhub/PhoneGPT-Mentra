@@ -210,6 +210,18 @@ try {
   console.log('✅ Migration complete');
 }
 
+// Add type column to documents table (safe migration)
+try {
+  db.prepare(`
+    SELECT type FROM documents LIMIT 1
+  `).get();
+} catch (error) {
+  // Column doesn't exist, add it
+  console.log('📊 Adding type column to documents...');
+  db.prepare('ALTER TABLE documents ADD COLUMN type TEXT DEFAULT "upload"').run();
+  console.log('✅ Migration complete');
+}
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -924,10 +936,10 @@ class PhoneGPTMentraOSApp extends AppServer {
           console.error('Failed to generate summary:', error);
         }
 
-        // Save to documents
+        // Save to documents as transcription type
         const result = db.prepare(
-          'INSERT INTO documents (userId, fileName, content, persona) VALUES (?, ?, ?, ?)'
-        ).run(req.user.userId, summary, transcription, persona);
+          'INSERT INTO documents (userId, fileName, content, persona, type) VALUES (?, ?, ?, ?, ?)'
+        ).run(req.user.userId, summary, transcription, persona, 'transcription');
 
         console.log(`✅ Saved transcription as document: "${summary}"`);
 
@@ -1106,16 +1118,16 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
       try {
         const { persona } = req.query;
         
-        let query = 'SELECT id, fileName, persona, created_at FROM documents WHERE userId = ?';
+        let query = 'SELECT id, fileName, persona, type, created_at FROM documents WHERE userId = ?';
         const params = [req.user.userId];
-        
+
         if (persona) {
           query += ' AND persona = ?';
           params.push(persona as string);
         }
-        
+
         query += ' ORDER BY created_at DESC';
-        
+
         const documents = db.prepare(query).all(...params);
         res.json(documents);
       } catch (error) {
@@ -1124,18 +1136,37 @@ app.post('/api/documents', authenticateToken, upload.single('file'), async (req:
       }
     });
 
-    app.delete('/api/documents/:documentId', authenticateToken, (req: any, res: Response) => {
+    app.get('/api/documents/:documentId', authenticateToken, (req: any, res: Response) => {
       try {
         const { documentId } = req.params;
-        
+
         const doc = db.prepare(
           'SELECT * FROM documents WHERE id = ? AND userId = ?'
         ).get(documentId, req.user.userId);
-        
+
         if (!doc) {
           return res.status(404).json({ error: 'Document not found' });
         }
-        
+
+        res.json(doc);
+      } catch (error) {
+        console.error('Get document error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    app.delete('/api/documents/:documentId', authenticateToken, (req: any, res: Response) => {
+      try {
+        const { documentId } = req.params;
+
+        const doc = db.prepare(
+          'SELECT * FROM documents WHERE id = ? AND userId = ?'
+        ).get(documentId, req.user.userId);
+
+        if (!doc) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+
         db.prepare('DELETE FROM documents WHERE id = ?').run(documentId);
         res.json({ message: 'Document deleted' });
       } catch (error) {

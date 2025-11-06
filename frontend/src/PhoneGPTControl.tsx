@@ -83,6 +83,7 @@ interface Document {
   fileName: string;
   content: string;
   persona: string;
+  type?: string;
   created_at: string;
 }
 
@@ -107,6 +108,8 @@ export default function PhoneGPTControl({ user, token, onLogout }: {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
 
   // Glass Session State
   const [glassSessions, setGlassSessions] = useState<GlassSession[]>([]);
@@ -740,17 +743,37 @@ return (
                   .map(doc => (
                     <div
                       key={doc.id}
-                      className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700 flex items-center gap-2"
+                      className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700 flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                      onClick={async () => {
+                        try {
+                          const response = await axios.get(
+                            `${API_URL}/api/documents/${doc.id}`,
+                            axiosConfig
+                          );
+                          setSelectedDocument(response.data);
+                          setShowDocumentModal(true);
+                        } catch (error) {
+                          console.error('Failed to load document:', error);
+                        }
+                      }}
                     >
                       <FileText className="w-4 h-4 text-purple-500 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{doc.fileName}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-medium truncate">{doc.fileName}</div>
+                          {doc.type === 'transcription' && (
+                            <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-500 text-white">
+                              NOTE
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-gray-500">
                           {new Date(doc.created_at).toLocaleDateString()}
                         </div>
                       </div>
                       <button
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           if (confirm(`Delete ${doc.fileName}?`)) {
                             try {
                               await axios.delete(
@@ -1304,6 +1327,55 @@ return (
                 />
                 <span className="text-sm">Automatically cycle through response pages</span>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Document Viewer Modal */}
+    {showDocumentModal && selectedDocument && (
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+        <div className={`max-w-3xl w-full max-h-[90vh] rounded-2xl overflow-hidden ${
+          darkMode ? 'bg-gray-900' : 'bg-white'
+        }`}>
+          {/* Header */}
+          <div className={`p-4 border-b flex items-center justify-between ${
+            darkMode ? 'border-gray-700' : 'border-gray-200'
+          }`}>
+            <div className="flex items-center gap-3">
+              <FileText className="w-5 h-5 text-purple-500" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">{selectedDocument.fileName}</h3>
+                  {selectedDocument.type === 'transcription' && (
+                    <span className="px-2 py-0.5 text-xs font-semibold rounded bg-blue-500 text-white">
+                      NOTE
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {new Date(selectedDocument.created_at).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setShowDocumentModal(false);
+                setSelectedDocument(null);
+              }}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className={`p-6 overflow-y-auto max-h-[calc(90vh-80px)] ${
+            darkMode ? 'text-gray-200' : 'text-gray-800'
+          }`}>
+            <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed">
+              {selectedDocument.content}
             </div>
           </div>
         </div>
