@@ -5,6 +5,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import MobileMetroGrid from './components/MobileMetroGrid';
 import MobileSessionsList from './components/MobileSessionsList';
 import MobileDocumentsList from './components/MobileDocumentsList';
+import ConversationList from './components/ConversationList';
+import StatsDisplay from './components/StatsDisplay';
+import EmptySessionState from './components/EmptySessionState';
+import UploadModal from './components/UploadModal';
+// NOTE: Additional modals available: SettingsModal, ConversationModal, DocumentModal
 import {
   Glasses,
   Plus,
@@ -28,8 +33,7 @@ import {
   MessageCircle,
   Zap,
   Volume2,
-  Menu,
-  Activity
+  Menu
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -121,7 +125,7 @@ export default function PhoneGPTControl({ token, onLogout }: {
 
   // Document State
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  // uploadFile state moved to UploadModal component
 
   // Modal page state (reserved for future use)
   const [] = useState(0);
@@ -307,29 +311,7 @@ export default function PhoneGPTControl({ token, onLogout }: {
     }
   };
 
-  const uploadDocument = async () => {
-    if (!uploadFile) return;
-    
-    const formData = new FormData();
-    formData.append('file', uploadFile);
-    formData.append('persona', activePersona);
-    
-    try {
-      await axios.post(`${API_URL}/api/documents`, formData, {
-        ...axiosConfig,
-        headers: {
-          ...axiosConfig.headers,
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      
-      await fetchDocuments();
-      setShowUploadModal(false);
-      setUploadFile(null);
-    } catch (error) {
-      console.error('Failed to upload document:', error);
-    }
-  };
+  // uploadDocument function moved to UploadModal component
 
   const fetchDocuments = async () => {
     try {
@@ -660,81 +642,27 @@ return (
                 </div>
               )}
 
-              {/* Conversation History */}
+              {/* Conversation History - Using Component */}
               <div className="relative">
-                <div className="h-96 overflow-y-auto space-y-3">
-                  {conversations.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400">
-                      <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                      <p>No conversations yet</p>
-                      <p className="text-sm">Start speaking to see conversations here</p>
-                    </div>
-                  ) : (
-                    conversations.map((conv) => (
-                      <div
-                        key={conv.id}
-                        onClick={() => {
-                          setSelectedConversation(conv);
-                          setShowConversationModal(true);
-                        }}
-                        className="p-3 rounded-lg bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-600 cursor-pointer hover:shadow-md transition-all"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-start gap-2 flex-1">
-                            <MessageCircle className="w-4 h-4 text-blue-500 mt-1 flex-shrink-0" />
-                            <span className="text-sm font-medium">Q: {conv.query.substring(0, 50)}...</span>
-                          </div>
-                          <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
-                            {new Date(conv.timestamp).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <Zap className="w-4 h-4 text-purple-500 mt-1 flex-shrink-0" />
-                          <span className="text-sm text-gray-600 dark:text-gray-300">
-                            A: {conv.response.substring(0, 100)}...
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  <div ref={conversationEndRef} />
-                </div>
+                <ConversationList
+                  conversations={conversations}
+                  onConversationClick={(conv) => {
+                    setSelectedConversation(conv);
+                    setShowConversationModal(true);
+                  }}
+                />
               </div>
 
-              {/* Statistics Dashboard */}
-              <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-purple-500" />
-                  Dashboard
-                </h3>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="text-center">
-                    <p className="font-bold text-lg text-purple-500">{stats.totalConversations}</p>
-                    <span className="text-gray-500">Conversations</span>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-bold text-lg text-blue-500">{stats.averageResponseTime.toFixed(1)}</p>
-                    <span className="text-gray-500">Avg ms</span>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-bold text-lg text-green-500">{stats.activeGlassConnections}</p>
-                    <span className="text-gray-500">Active</span>
-                  </div>
-                </div>
-              </div>
+              {/* Statistics Dashboard - Using Component */}
+              <StatsDisplay
+                totalConversations={stats.totalConversations}
+                averageResponseTime={stats.averageResponseTime}
+                activeGlassConnections={stats.activeGlassConnections}
+                darkMode={darkMode}
+              />
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-              <Glasses className="w-16 h-16 mb-4" />
-              <p>Select or create a glass session to begin</p>
-              <button
-                onClick={createGlassSession}
-                className="mt-4 px-4 py-2 rounded-lg bg-blue-500 text-white"
-              >
-                <Plus className="w-4 h-4 inline mr-2" />
-                Create Session
-              </button>
-            </div>
+            <EmptySessionState onCreateSession={createGlassSession} />
           )}
         </div>
       </div>
@@ -1070,53 +998,33 @@ return (
       </div>
     )}
 
-    {/* Upload Modal */}
+    {/* Upload Modal - Using Component */}
     {showUploadModal && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-md w-full`}>
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="text-xl font-semibold">Upload Document</h3>
-            <button
-              onClick={() => setShowUploadModal(false)}
-              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Persona</label>
-              <select
-                value={activePersona}
-                onChange={(e) => setActivePersona(e.target.value)}
-                className="w-full p-2 rounded-lg border dark:bg-gray-700 dark:border-gray-600"
-              >
-                {personas.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
+      <UploadModal
+        darkMode={darkMode}
+        personas={personas}
+        defaultPersona={activePersona}
+        onClose={() => setShowUploadModal(false)}
+        onUpload={async (file, persona) => {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('persona', persona);
 
-            <div>
-              <label className="block text-sm font-medium mb-2">File</label>
-              <input
-                type="file"
-                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                className="w-full p-2 rounded-lg border dark:bg-gray-700 dark:border-gray-600"
-              />
-            </div>
-            
-            <button
-              onClick={uploadDocument}
-              disabled={!uploadFile}
-              className="w-full py-2 rounded-lg bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50"
-            >
-              Upload
-            </button>
-          </div>
-        </div>
-      </div>
+          await axios.post(
+            `${API_URL}/api/documents`,
+            formData,
+            {
+              ...axiosConfig,
+              headers: {
+                ...axiosConfig.headers,
+                'Content-Type': 'multipart/form-data',
+              },
+            }
+          );
+
+          await fetchDocuments();
+        }}
+      />
     )}
 
     {/* Settings Modal */}
