@@ -5,12 +5,14 @@ interface Document {
   fileName: string;
   created_at: string;
   persona: string;
+  type?: string;
 }
 
 interface MobileDocumentsListProps {
   darkMode: boolean;
   documents: Document[];
   activePersona: string;
+  onDocumentClick: (docId: number) => void;
   onDeleteDocument: (docId: number) => void;
 }
 
@@ -18,6 +20,7 @@ export default function MobileDocumentsList({
   darkMode,
   documents,
   activePersona,
+  onDocumentClick,
   onDeleteDocument
 }: MobileDocumentsListProps) {
   const filteredDocs = documents.filter(doc => doc.persona === activePersona);
@@ -29,19 +32,28 @@ export default function MobileDocumentsList({
           {filteredDocs.map(doc => (
             <div
               key={doc.id}
-              className={`p-3 rounded-lg flex items-center gap-2 ${
+              onClick={() => onDocumentClick(doc.id)}
+              className={`p-3 rounded-lg flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors ${
                 darkMode ? 'bg-gray-700' : 'bg-gray-50'
               }`}
             >
-              <FileText className="w-4 h-4 text-green-500 flex-shrink-0" />
+              <FileText className="w-4 h-4 text-purple-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{doc.fileName}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium truncate">{doc.fileName}</div>
+                  {doc.type === 'transcription' && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-500 text-white">
+                      NOTE
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-gray-500">
                   {new Date(doc.created_at).toLocaleDateString()}
                 </div>
               </div>
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   if (confirm(`Delete ${doc.fileName}?`)) {
                     onDeleteDocument(doc.id);
                   }

@@ -1,10 +1,10 @@
 import TranscriptionNotes from './TranscriptionNotes';
 import React, { useState, useEffect, useRef } from 'react';
 
-// NOTE: Modular components are available in ./components/ for future refactoring:
-// - MobileMetroGrid, MobileSessionsList, MobileDocumentsList
-// - DesktopSessionsSidebar, DesktopDocumentsSidebar
-// - ConversationView, Header
+// Import modular components
+import MobileMetroGrid from './components/MobileMetroGrid';
+import MobileSessionsList from './components/MobileSessionsList';
+import MobileDocumentsList from './components/MobileDocumentsList';
 import {
   Glasses,
   Plus,
@@ -29,7 +29,6 @@ import {
   Zap,
   Volume2,
   Menu,
-  Brain,
   Activity
 } from 'lucide-react';
 import axios from 'axios';
@@ -571,273 +570,83 @@ return (
       {/* ========== MOBILE VIEW WITH METRO GRID ========== */}
       <div className="md:hidden space-y-4">
         
-        {/* METRO FEATURE GRID - Even Realities Style */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* Transcribe Tile */}
-          <button
-            onClick={async () => {
-              if (activeSessionId) {
-                try {
-                  await axios.post(
-                    `${API_URL}/api/glass-sessions/${activeSessionId}/pause-for-transcribe`,
-                    {},
-                    axiosConfig
-                  );
-                  console.log('✅ Session paused for transcription');
-                } catch (error) {
-                  console.error('Failed to pause session:', error);
-                }
+        {/* METRO FEATURE GRID - Using Component */}
+        <MobileMetroGrid
+          darkMode={darkMode}
+          activePersona={activePersona}
+          activeSessionId={activeSessionId}
+          glassSessions={glassSessions}
+          documents={documents}
+          wpm={wpm}
+          isListening={isListening}
+          onTranscribeClick={async () => {
+            if (activeSessionId) {
+              try {
+                await axios.post(
+                  `${API_URL}/api/glass-sessions/${activeSessionId}/pause-for-transcribe`,
+                  {},
+                  axiosConfig
+                );
+                console.log('✅ Session paused for transcription');
+              } catch (error) {
+                console.error('Failed to pause session:', error);
               }
-              setShowTranscription(true);
-            }}
-            className={`relative h-28 rounded-xl p-3 flex flex-col items-center justify-center transition-all active:scale-95 ${
-              darkMode
-                ? 'bg-gradient-to-br from-purple-600 to-pink-600'
-                : 'bg-gradient-to-br from-purple-500 to-pink-500'
-            } text-white shadow-lg`}
-          >
-            <Mic className="w-7 h-7 mb-1" />
-            <span className="text-sm font-medium">Transcribe</span>
-            <span className="text-xs opacity-80">Voice Notes</span>
-          </button>
-
-          {/* Glass Sessions Tile */}
-          <button
-            onClick={() => setShowSessions(!showSessions)}
-            className={`relative h-28 rounded-xl p-3 flex flex-col items-center justify-center transition-all active:scale-95 ${
-              darkMode 
-                ? 'bg-gradient-to-br from-blue-600 to-cyan-600' 
-                : 'bg-gradient-to-br from-blue-500 to-cyan-500'
-            } text-white shadow-lg`}
-          >
-            <Glasses className="w-7 h-7 mb-1" />
-            <span className="text-sm font-medium">Sessions</span>
-            {glassSessions.length > 0 && (
-              <span className="absolute top-2 right-2 bg-white text-blue-500 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                {glassSessions.length}
-              </span>
-            )}
-          </button>
-
-          {/* Documents Tile */}
-          <button
-            onClick={() => setShowDocuments(!showDocuments)}
-            className={`relative h-28 rounded-xl p-3 flex flex-col items-center justify-center transition-all active:scale-95 ${
-              darkMode 
-                ? 'bg-gradient-to-br from-green-600 to-emerald-600' 
-                : 'bg-gradient-to-br from-green-500 to-emerald-500'
-            } text-white shadow-lg`}
-          >
-            <FileText className="w-7 h-7 mb-1" />
-            <span className="text-sm font-medium">Documents</span>
-            {documents.filter(d => d.persona === activePersona).length > 0 && (
-              <span className="absolute top-2 right-2 bg-white text-green-500 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                {documents.filter(d => d.persona === activePersona).length}
-              </span>
-            )}
-          </button>
-
-          {/* Upload Tile */}
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className={`relative h-28 rounded-xl p-3 flex flex-col items-center justify-center transition-all active:scale-95 ${
-              darkMode 
-                ? 'bg-gradient-to-br from-orange-600 to-red-600' 
-                : 'bg-gradient-to-br from-orange-500 to-red-500'
-            } text-white shadow-lg`}
-          >
-            <Upload className="w-7 h-7 mb-1" />
-            <span className="text-sm font-medium">Upload</span>
-            <span className="text-xs opacity-80">Add Files</span>
-          </button>
-        </div>
-
-        {/* Secondary Quick Actions Row */}
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className={`h-20 rounded-lg p-2 flex flex-col items-center justify-center transition-all active:scale-95 ${
-              darkMode ? 'bg-gray-800' : 'bg-white'
-            } shadow-md`}
-          >
-            <Settings className="w-5 h-5 mb-1 text-gray-500" />
-            <span className="text-xs">Settings</span>
-          </button>
-
-          <button
-            className={`h-20 rounded-lg p-2 flex flex-col items-center justify-center ${
-              darkMode ? 'bg-gray-800' : 'bg-white'
-            } shadow-md`}
-          >
-            <Volume2 className="w-5 h-5 mb-1 text-blue-500" />
-            <span className="text-xs font-medium">{wpm}</span>
-            <span className="text-xs opacity-60">WPM</span>
-          </button>
-
-          <button
-            onClick={toggleListening}
-            className={`h-20 rounded-lg p-2 flex flex-col items-center justify-center transition-all active:scale-95 ${
-              darkMode ? 'bg-gray-800' : 'bg-white'
-            } shadow-md`}
-          >
-            {isListening ? 
-              <Mic className="w-5 h-5 mb-1 text-green-500 animate-pulse" /> : 
-              <MicOff className="w-5 h-5 mb-1 text-red-500" />
             }
-            <span className="text-xs font-medium">{isListening ? 'On' : 'Off'}</span>
-          </button>
+            setShowTranscription(true);
+          }}
+          onSessionsToggle={() => setShowSessions(!showSessions)}
+          onDocumentsToggle={() => setShowDocuments(!showDocuments)}
+          onUploadClick={() => setShowUploadModal(true)}
+          onSettingsClick={() => setShowSettingsModal(true)}
+          onToggleListening={toggleListening}
+        />
 
-          <button
-            className={`h-20 rounded-lg p-2 flex flex-col items-center justify-center ${
-              darkMode ? 'bg-gray-800' : 'bg-white'
-            } shadow-md opacity-50`}
-            disabled
-          >
-            <Brain className="w-5 h-5 mb-1 text-purple-500" />
-            <span className="text-xs">AI Chat</span>
-          </button>
-        </div>
-
-        {/* Sessions Dropdown (triggered by tile) */}
+        {/* Sessions Dropdown (triggered by tile) - Using Component */}
         {showSessions && (
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-lg overflow-hidden`}>
-            <div className="p-4">
-              <button
-                onClick={createGlassSession}
-                className="w-full mb-3 p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600"
-              >
-                <Plus className="w-4 h-4 inline mr-2" />
-                New Session
-              </button>
-              
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {glassSessions.map(session => (
-                  <div
-                    key={session.id}
-                    onClick={async () => {
-                      await switchToSession(session.id);
-                      setShowSessions(false);
-                    }}
-                    className={`p-3 rounded-lg cursor-pointer transition-all ${
-                      activeSessionId === session.id
-                        ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
-                        : darkMode ? 'bg-gray-700' : 'bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">{session.sessionName}</div>
-                        <div className="text-xs opacity-70">{new Date(session.created_at).toLocaleDateString()}</div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            session.persona === 'work' ? 'bg-blue-500/20 text-blue-400' :
-                            session.persona === 'home' ? 'bg-green-500/20 text-green-400' :
-                            'bg-purple-500/20 text-purple-400'
-                          }`}>
-                            {session.persona}
-                          </span>
-                          {session.conversation_state === 'recording' && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 flex items-center gap-1">
-                              <div className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />
-                              Recording
-                            </span>
-                          )}
-                          {session.is_active && (
-                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteGlassSession(session.id);
-                        }}
-                        className="p-1 hover:bg-red-500 hover:text-white rounded"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <MobileSessionsList
+            darkMode={darkMode}
+            glassSessions={glassSessions}
+            activeSessionId={activeSessionId}
+            onCreateSession={createGlassSession}
+            onSwitchSession={async (sessionId) => {
+              await switchToSession(sessionId);
+              setShowSessions(false);
+            }}
+            onDeleteSession={deleteGlassSession}
+            onClose={() => setShowSessions(false)}
+          />
         )}
 
-        {/* Documents Dropdown (triggered by tile) */}
+        {/* Documents Dropdown (triggered by tile) - Using Component */}
         {showDocuments && (
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-lg overflow-hidden`}>
-            <div className="p-4">
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="w-full mb-3 p-2 rounded-lg bg-purple-500 text-white"
-              >
-                <Plus className="w-4 h-4 inline mr-2" />
-                Add Document
-              </button>
-              
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {documents
-                  .filter(doc => doc.persona === activePersona)
-                  .map(doc => (
-                    <div
-                      key={doc.id}
-                      className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700 flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                      onClick={async () => {
-                        try {
-                          const response = await axios.get(
-                            `${API_URL}/api/documents/${doc.id}`,
-                            axiosConfig
-                          );
-                          setSelectedDocument(response.data);
-                          setShowDocumentModal(true);
-                        } catch (error) {
-                          console.error('Failed to load document:', error);
-                        }
-                      }}
-                    >
-                      <FileText className="w-4 h-4 text-purple-500 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="text-sm font-medium truncate">{doc.fileName}</div>
-                          {doc.type === 'transcription' && (
-                            <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-500 text-white">
-                              NOTE
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(doc.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (confirm(`Delete ${doc.fileName}?`)) {
-                            try {
-                              await axios.delete(
-                                `${API_URL}/api/documents/${doc.id}`,
-                                axiosConfig
-                              );
-                              await fetchDocuments();
-                            } catch (error) {
-                              console.error('Failed to delete document:', error);
-                            }
-                          }
-                        }}
-                        className="p-1.5 rounded hover:bg-red-500 hover:text-white transition-colors"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                  
-                {documents.filter(doc => doc.persona === activePersona).length === 0 && (
-                  <p className="text-center text-gray-400 py-4 text-sm">No documents for {activePersona}</p>
-                )}
-              </div>
-            </div>
-          </div>
+          <MobileDocumentsList
+            darkMode={darkMode}
+            documents={documents}
+            activePersona={activePersona}
+            onDocumentClick={async (docId) => {
+              try {
+                const response = await axios.get(
+                  `${API_URL}/api/documents/${docId}`,
+                  axiosConfig
+                );
+                setSelectedDocument(response.data);
+                setShowDocumentModal(true);
+              } catch (error) {
+                console.error('Failed to load document:', error);
+              }
+            }}
+            onDeleteDocument={async (docId) => {
+              try {
+                await axios.delete(
+                  `${API_URL}/api/documents/${docId}`,
+                  axiosConfig
+                );
+                await fetchDocuments();
+              } catch (error) {
+                console.error('Failed to delete document:', error);
+              }
+            }}
+          />
         )}
 
         {/* Main Conversation Area */}
